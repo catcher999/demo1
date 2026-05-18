@@ -1,0 +1,69 @@
+com.example.demo
+├── controller
+│   ├── user（认证、用户信息、签到）
+│   ├── creation（作品画廊、任务提交、任务查询）
+│   ├── order（充值订单、支付回调）
+│   └── admin（用户管理、套餐管理、模型管理、任务查询）
+├── service
+│   ├── impl
+│   └── mq（消息生产者、消费者）
+├── mapper
+├── entity（对应数据库表）
+├── dto（请求、响应DTO）
+├── config（Redis、MQ、支付宝、线程池等配置）
+├── interceptor（JWT拦截器、限流拦截器、管理员拦截器）
+├── utils（JWT工具、Redis工具、支付宝SDK封装）
+└── task（定时任务：掉单补偿、超时关单）
+
+发现直接跟着AI搓一个比较复杂的不熟悉的项目对于我这样一个初学者而言不太现实
+于是我决定放弃大多数功能，只保留骨架部分（能跑完就行的程度）跟着AI把流程层次逻辑走一遍（要是我真成了就再丰富它）
+明确目标，是在实践中学习，以项目需求为导向进行学习，发现光使用AI学习似乎不太够，可能需要参考一些完成的学习项目
+发现上面的结构不够清晰，于是再次拷打AI让它基于我的新理念重新生成一个详细的分层结构
+至于具体每一步的我的日志会记录在飞书上，这里仅作概览。
+src/main/java/com.example.demo/
+├── controller          # 【接口层/表现层】
+│   ├── AuthController.java      # 专门处理登录、注册、退出请求
+│   ├── GalleryController.java   # 专门处理画廊（作品展示）请求
+│   └── TaskController.java      # 专门处理AI生成任务的提交与查询
+│   # 注：这一层禁止出现任何 SQL 语句或复杂的 if-else 业务判断。
+│   #    它的唯一职责是：接参数 -> 调 Service -> 返回 JSON。
+│
+├── service             # 【业务逻辑层接口】
+│   ├── UserService.java         # 定义用户相关的业务行为（如：注册、登录、扣点）
+│   ├── ArtworkService.java      # 定义作品相关的业务行为
+│   └── AITaskService.java       # 定义任务相关的业务行为
+│   # 注：这是接口定义，方便后续扩展（比如换实现类，或者用 AOP 切面加日志）。
+│
+├── service.impl        # 【业务逻辑层实现】
+│   ├── UserServiceImpl.java     # 实现 UserService，写具体的校验、加密、扣点逻辑
+│   ├── ArtworkServiceImpl.java  # 实现作品分页查询逻辑
+│   └── AITaskServiceImpl.java   # 实现生成任务的流程控制（调用AI、存结果）
+│   # 注：这一层是项目的大脑，所有“怎么做”的逻辑都在这里。
+│
+├── mapper              # 【持久层/数据访问层】
+│   ├── UserMapper.java          # 直接操作数据库 user 表的接口（MyBatis-Plus 加持）
+│   ├── ArtworkMapper.java       # 操作 artwork 表
+│   └── TaskMapper.java          # 操作 ai_task 表
+│   # 注：这一层只负责和数据库打交道，不要写业务判断。
+│
+├── entity              # 【实体类】
+│   ├── User.java                # 对应数据库 user 表，属性和字段一一映射
+│   ├── Artwork.java
+│   └── Task.java
+│
+├── dto                 # 【数据传输对象】
+│   ├── request/                 # 专门放前端发过来的请求参数对象
+│   │   ├── LoginRequest.java
+│   │   └── TaskSubmitRequest.java
+│   └── response/                # 专门放返回给前端的对象（可以脱敏，隐藏敏感字段）
+│       ├── LoginResponse.java
+│       └── ArtworkVO.java       # VO = View Object 视图对象
+│
+├── config               # 【配置类】
+│   ├── WebConfig.java           # 跨域配置、拦截器配置
+│   └── MybatisPlusConfig.java   # 分页插件配置
+│
+└── common               # 【公共工具/异常/拦截器】
+    ├── Result.java              # 统一返回格式 {code, message, data}
+    ├── BusinessException.java   # 自定义业务异常
+    └── JwtInterceptor.java      # Token 校验拦截器
