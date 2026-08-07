@@ -21,5 +21,5 @@ public class User {
 
     private String email;
 
-    // 可以根据需要添加更多字段
+    private String role;
 }
