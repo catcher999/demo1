@@ -93,6 +93,19 @@
             <artifactId>spring-boot-starter-mail</artifactId>
         </dependency>
 
+        <!-- RabbitMQ -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-amqp</artifactId>
+        </dependency>
+
+        <!-- 支付宝 SDK（沙箱支付） -->
+        <dependency>
+            <groupId>com.alipay.sdk</groupId>
+            <artifactId>alipay-sdk-java</artifactId>
+            <version>3.7.110.ALL</version>
+        </dependency>
+
         <!-- OpenAPI 文档生成（用于 Apifox/Postman 导入） -->
         <dependency>
             <groupId>org.springdoc</groupId>

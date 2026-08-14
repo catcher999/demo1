@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.demo.mapper.gallery.ArtworkMapper">
+
+    <select id="selectPublicArtworks"
+            resultType="com.example.demo.dto.gallery.ArtworkVO">
+
+        SELECT
+            a.id,
+            a.title,
+            a.description,
+            a.image_url,
+            a.artist,
+            a.date,
+            a.heat_score,
+            a.likes,
+            a.views,
+            c.name AS category_name
+        FROM artwork a
+        LEFT JOIN category c ON a.category_id = c.id
+        WHERE a.is_public = 1
+        <if test="categoryId != null">
+            AND a.category_id = #{categoryId}
+        </if>
+        ORDER BY
+        <choose>
+            <when test="sortBy == 'date'">
+                a.date DESC
+            </when>
+            <otherwise>
+                a.heat_score DESC
+            </otherwise>
+        </choose>
+
+    </select>
+
+    <!-- 点赞：likes+1，重算 heat_score -->
+    <update id="incrementLike">
+        UPDATE artwork
+        SET likes = likes + 1,
+            heat_score = (likes + 1) * 5 + COALESCE(views, 0)
+        WHERE id = #{id}
+    </update>
+
+    <!-- 取消点赞：likes-1（不低于0），重算 heat_score -->
+    <update id="decrementLike">
+        UPDATE artwork
+        SET likes = GREATEST(likes - 1, 0),
+            heat_score = GREATEST(likes - 1, 0) * 5 + COALESCE(views, 0)
+        WHERE id = #{id}
+          AND likes > 0
+    </update>
+
+    <!-- 增加浏览数 -->
+    <update id="incrementView">
+        UPDATE artwork
+        SET views = COALESCE(views, 0) + 1,
+            heat_score = COALESCE(likes, 0) * 5 + (COALESCE(views, 0) + 1)
+        WHERE id = #{id}
+    </update>
+
+</mapper>

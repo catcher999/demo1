@@ -1,11 +1,11 @@
 package com.example.demo.controller;
 
 import com.example.demo.common.Result;
-import com.example.demo.dto.request.EmailLoginRequest;
-import com.example.demo.dto.request.LoginRequest;
-import com.example.demo.dto.request.SendCodeRequest;
-import com.example.demo.dto.response.LoginResponse;
-import com.example.demo.service.AuthService;
+import com.example.demo.dto.auth.EmailLoginRequest;
+import com.example.demo.dto.auth.LoginRequest;
+import com.example.demo.dto.auth.SendCodeRequest;
+import com.example.demo.dto.auth.LoginResponse;
+import com.example.demo.service.auth.AuthService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
