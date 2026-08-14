@@ -1,5 +1,6 @@
 package com.example.demo.common;
 
+import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -25,14 +26,15 @@ public class JwtInterceptor implements HandlerInterceptor {
         }
         String token = authHeader.substring(7);
 
-        // 2. 验证 Token（使用 0.12.6 的 validateToken 方法）
-        if (!jwtUtil.validateToken(token)) {
+        // 2. 验证 Token 并解析 Claims（一次解析，避免重复 3 次）
+        Claims claims = jwtUtil.validateAndParseToken(token);
+        if (claims == null) {
             throw new BusinessException("Token 无效或已过期，请重新登录");
         }
 
-        // 3. 提取用户信息（getClaimsFromToken 内部已适配新 API）
-        Long userId = jwtUtil.getUserIdFromToken(token);
-        String username = jwtUtil.getUsernameFromToken(token);
+        // 3. 提取用户信息（从已解析的 Claims 取，无需再解析）
+        Long userId = (Long) claims.get("userId");
+        String username = claims.getSubject();
 
         // 4. 存入 Request 上下文
         request.setAttribute("currentUserId", userId);

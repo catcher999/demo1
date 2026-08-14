@@ -89,37 +89,24 @@ public class JwtUtil {
         return (Long) getClaimsFromToken(token).get("userId");
     }
 
-    public boolean validateToken(String token) {
-        /*
-        验证token
-        * @param token
-        * @return 是否有效
-         */
+    /**
+     * 验证 token 并返回 Claims（一次解析，避免重复解析 3 次）
+     * @return 解析成功返回 Claims，失败返回 null
+     */
+    public Claims validateAndParseToken(String token) {
         try {
-            getClaimsFromToken(token);
-            return true;
-        }catch (ExpiredJwtException e) {
+            return getClaimsFromToken(token);
+        } catch (ExpiredJwtException e) {
             log.warn("Token 已过期: {}", e.getMessage());
         } catch (UnsupportedJwtException | MalformedJwtException | io.jsonwebtoken.security.SignatureException e) {
             log.warn("Token 格式或签名异常: {}", e.getMessage());
         } catch (IllegalArgumentException e) {
             log.warn("Token 参数非法: {}", e.getMessage());
         }
-        return false;
+        return null;
     }
 
-    public String refreshToken(String token) {
-        /*
-        刷新token
-        * @param token
-        * @return 新的token
-         */
-        Claims oldClaims = getClaimsFromToken(token);
-        return Jwts.builder()
-                .claims(oldClaims)
-                .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + expire))
-                .signWith(getSigningKey(), Jwts.SIG.HS256)
-                .compact();
+    public boolean validateToken(String token) {
+        return validateAndParseToken(token) != null;
     }
 }

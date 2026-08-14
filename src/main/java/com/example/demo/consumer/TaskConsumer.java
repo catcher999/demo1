@@ -89,7 +89,7 @@ public class TaskConsumer {
         } catch (Exception e) {
             log.error("图片生成失败，taskId={}", taskId, e);
 
-            // 更新任务状态为 failed
+            // 1. 先更新任务状态为 failed（状态优先，避免退算力后状态还停在 queued）
             Task task = taskMapper.selectById(taskId);
             if (task != null) {
                 task.setStatus("failed");
@@ -97,13 +97,18 @@ public class TaskConsumer {
                 task.setFinishedAt(new Date());
                 taskMapper.updateById(task);
 
-                // 退还算力
+                // 2. 再退还算力（只有已扣过算力的任务才退）
                 if (task.getPointsCost() != null && task.getPointsCost() > 0) {
-                    pointsService.refundPoints(task.getUserId(), task.getPointsCost());
-                    log.info("已退还算力 {} 点，taskId={}", task.getPointsCost(), taskId);
+                    try {
+                        pointsService.refundPoints(task.getUserId(), task.getPointsCost());
+                        log.info("已退还算力 {} 点，taskId={}", task.getPointsCost(), taskId);
+                    } catch (Exception refundEx) {
+                        // 退算力失败不阻塞，状态已标记 failed，可人工补偿
+                        log.error("退算力失败，需人工补偿，taskId={}, points={}", taskId, task.getPointsCost(), refundEx);
+                    }
                 }
 
-                // 发邮件通知
+                // 3. 发邮件通知
                 sendNotify(task, "failed", null);
             }
 

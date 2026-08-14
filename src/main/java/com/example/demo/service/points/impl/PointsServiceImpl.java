@@ -55,7 +55,6 @@ public class PointsServiceImpl implements PointsService {
         String key = POINTS_KEY + userId;
         String value = redisTemplate.opsForValue().get(key);
         if (value == null) {
-            // 缓存未加载，从 DB 读取并缓存
             User user = userMapper.selectById(userId);
             if (user == null) {
                 return 0;
@@ -70,8 +69,7 @@ public class PointsServiceImpl implements PointsService {
     public boolean deductPoints(Long userId, int points) {
         String key = POINTS_KEY + userId;
 
-        // 第一次调用时，缓存可能未加载，先预热
-        if (Boolean.FALSE.equals(redisTemplate.hasKey(key))) {
+        if (!Boolean.TRUE.equals(redisTemplate.hasKey(key))) {
             loadPointsToCache(userId);
         }
 
@@ -81,11 +79,7 @@ public class PointsServiceImpl implements PointsService {
                 String.valueOf(points)
         );
 
-        if (result != null && result == 1L) {
-            // 同步扣减 DB
-            new LambdaUpdateWrapper<User>()
-                    .eq(User::getId, userId)
-                    .setSql("points = points - " + points);
+        if (result == 1L) {
             userMapper.update(null,
                     new LambdaUpdateWrapper<User>()
                             .eq(User::getId, userId)
@@ -99,7 +93,7 @@ public class PointsServiceImpl implements PointsService {
     public void refundPoints(Long userId, int points) {
         String key = POINTS_KEY + userId;
 
-        if (Boolean.FALSE.equals(redisTemplate.hasKey(key))) {
+        if (!Boolean.TRUE.equals(redisTemplate.hasKey(key))) {
             loadPointsToCache(userId);
         }
 
@@ -109,7 +103,21 @@ public class PointsServiceImpl implements PointsService {
                 String.valueOf(points)
         );
 
-        // 同步退还 DB
+        userMapper.update(null,
+                new LambdaUpdateWrapper<User>()
+                        .eq(User::getId, userId)
+                        .setSql("points = points + " + points));
+    }
+
+    @Override
+    public void addPoints(Long userId, int points) {
+        String key = POINTS_KEY + userId;
+
+        // 如果缓存已加载，原子加算力；否则直接改 DB，下次读会重新加载
+        if (Boolean.TRUE.equals(redisTemplate.hasKey(key))) {
+            redisTemplate.opsForValue().increment(key, points);
+        }
+
         userMapper.update(null,
                 new LambdaUpdateWrapper<User>()
                         .eq(User::getId, userId)
@@ -121,25 +129,21 @@ public class PointsServiceImpl implements PointsService {
         LocalDate today = LocalDate.now();
         String signKey = SIGN_KEY + userId + ":" + today;
 
-        // 用 setIfAbsent 保证当天只能签一次（防并发重复签到）
         Boolean firstSign = redisTemplate.opsForValue()
                 .setIfAbsent(signKey, "1", 25, TimeUnit.HOURS);
         if (Boolean.FALSE.equals(firstSign)) {
-            return 0; // 今天已签到
+            return 0;
         }
 
-        // 查用户上次签到信息
         User user = userMapper.selectById(userId);
         int streak = 1;
-        int reward = 10; // 基础奖励
+        int reward = 10;
 
-        // 连续签到加成：昨天签了 → 连续 +1；否则重置为 1
         if (user.getSignDate() != null && user.getSignDate().equals(today.minusDays(1))) {
             streak = user.getSignStreak() + 1;
-            reward = 10 + Math.min(streak - 1, 6) * 5; // 第2天+5, 第3天+10... 最高 +30
+            reward = 10 + Math.min(streak - 1, 6) * 5;
         }
 
-        // 更新用户：签到日期、连续天数、算力
         userMapper.update(null,
                 new LambdaUpdateWrapper<User>()
                         .eq(User::getId, userId)
@@ -147,7 +151,6 @@ public class PointsServiceImpl implements PointsService {
                         .set(User::getSignStreak, streak)
                         .setSql("points = points + " + reward));
 
-        // 同步更新 Redis 余额缓存
         String pointsKey = POINTS_KEY + userId;
         if (Boolean.TRUE.equals(redisTemplate.hasKey(pointsKey))) {
             redisTemplate.opsForValue().increment(pointsKey, reward);
@@ -156,7 +159,6 @@ public class PointsServiceImpl implements PointsService {
         return reward;
     }
 
-    /** 从 DB 加载算力余额到 Redis 缓存 */
     private void loadPointsToCache(Long userId) {
         User user = userMapper.selectById(userId);
         if (user != null) {

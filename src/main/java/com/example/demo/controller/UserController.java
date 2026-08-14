@@ -6,6 +6,7 @@ import com.example.demo.dto.user.UpdateProfileRequest;
 import com.example.demo.dto.user.UserVO;
 import com.example.demo.service.points.PointsService;
 import com.example.demo.service.user.UserService;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -34,7 +35,7 @@ public class UserController {
     @PutMapping("/profile")
     public ResponseEntity<Result<UserVO>> updateProfile(
             @RequestAttribute("currentUserId") Long userId,
-            @RequestBody UpdateProfileRequest request) {
+            @Valid @RequestBody UpdateProfileRequest request) {
         return ResponseEntity.ok(Result.success(userService.updateProfile(userId, request)));
     }
 
@@ -42,7 +43,7 @@ public class UserController {
     @PutMapping("/password")
     public ResponseEntity<Result<Void>> updatePassword(
             @RequestAttribute("currentUserId") Long userId,
-            @RequestBody UpdatePasswordRequest request) {
+            @Valid @RequestBody UpdatePasswordRequest request) {
         userService.updatePassword(userId, request.getOldPassword(), request.getNewPassword());
         return ResponseEntity.ok(Result.success(null));
     }

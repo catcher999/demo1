@@ -8,6 +8,7 @@ import com.example.demo.dto.recharge.RechargeOrderVO;
 import com.example.demo.dto.recharge.RechargePackageVO;
 import com.example.demo.service.recharge.RechargeService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -48,7 +49,7 @@ public class RechargeController {
     @PostMapping("/orders")
     public ResponseEntity<Result<PaymentResponse>> createOrder(
             @RequestAttribute("currentUserId") Long userId,
-            @RequestBody CreateOrderRequest request) {
+            @Valid @RequestBody CreateOrderRequest request) {
         return ResponseEntity.ok(Result.success(rechargeService.createOrder(userId, request)));
     }
 

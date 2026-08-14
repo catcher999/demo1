@@ -20,6 +20,7 @@ import com.example.demo.service.recharge.RechargeService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -113,6 +114,7 @@ public class RechargeServiceImpl implements RechargeService {
 
     // ==================== 支付宝异步回调 ====================
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public String handleNotify(Map<String, String> params) {
         // 1. 验签
         if (!alipayService.verifyNotifySign(params)) {
@@ -162,8 +164,8 @@ public class RechargeServiceImpl implements RechargeService {
                         .set(RechargeOrder::getTradeNo, tradeNo)
         );
 
-        // 6. 加算力
-        pointsService.refundPoints(order.getUserId(), order.getPoints());
+        // 6. 加算力（充值专用方法）
+        pointsService.addPoints(order.getUserId(), order.getPoints());
         log.info("✅ 订单支付成功，已加算力，orderNo={}, userId={}, points={}",
                 orderNo, order.getUserId(), order.getPoints());
 
@@ -196,6 +198,7 @@ public class RechargeServiceImpl implements RechargeService {
 
     // ==================== 掉单补偿 ====================
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean compensateOrder(String orderNo) {
         RechargeOrder order = getByOrderNo(orderNo);
         if (order == null || !"pending".equals(order.getStatus())) {
@@ -212,7 +215,7 @@ public class RechargeServiceImpl implements RechargeService {
                             .eq(RechargeOrder::getStatus, "pending")
                             .set(RechargeOrder::getStatus, "paid")
             );
-            pointsService.refundPoints(order.getUserId(), order.getPoints());
+            pointsService.addPoints(order.getUserId(), order.getPoints());
             log.info("✅ 掉单补偿成功，orderNo={}", orderNo);
             return true;
         }

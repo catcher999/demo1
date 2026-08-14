@@ -37,28 +37,28 @@
 
     </select>
 
-    <!-- 点赞：likes+1，重算 heat_score -->
+    <!-- 点赞：likes+1，重算 heat_score（MySQL SET 从左到右执行，likes 已更新，直接用） -->
     <update id="incrementLike">
-        UPDATE artwork
+        UPDATE `artwork`
         SET likes = likes + 1,
-            heat_score = (likes + 1) * 5 + COALESCE(views, 0)
+            heat_score = likes * 5 + COALESCE(views, 0)
         WHERE id = #{id}
     </update>
 
-    <!-- 取消点赞：likes-1（不低于0），重算 heat_score -->
+    <!-- 取消点赞：likes-1（不低于0），重算 heat_score（likes 已更新，直接用） -->
     <update id="decrementLike">
-        UPDATE artwork
+        UPDATE `artwork`
         SET likes = GREATEST(likes - 1, 0),
-            heat_score = GREATEST(likes - 1, 0) * 5 + COALESCE(views, 0)
+            heat_score = likes * 5 + COALESCE(views, 0)
         WHERE id = #{id}
           AND likes > 0
     </update>
 
-    <!-- 增加浏览数 -->
+    <!-- 增加浏览数，重算 heat_score（views 已更新，直接用） -->
     <update id="incrementView">
-        UPDATE artwork
+        UPDATE `artwork`
         SET views = COALESCE(views, 0) + 1,
-            heat_score = COALESCE(likes, 0) * 5 + (COALESCE(views, 0) + 1)
+            heat_score = COALESCE(likes, 0) * 5 + views
         WHERE id = #{id}
     </update>
 

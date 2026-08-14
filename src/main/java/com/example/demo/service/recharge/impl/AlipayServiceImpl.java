@@ -9,9 +9,11 @@ import com.alipay.api.response.AlipayTradeQueryResponse;
 import com.example.demo.common.BusinessException;
 import com.example.demo.config.AlipayConfig;
 import com.example.demo.service.recharge.AlipayService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -25,6 +27,7 @@ public class AlipayServiceImpl implements AlipayService {
 
     private final AlipayClient alipayClient;
     private final AlipayConfig alipayConfig;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public AlipayServiceImpl(AlipayClient alipayClient, AlipayConfig alipayConfig) {
         this.alipayClient = alipayClient;
@@ -37,14 +40,18 @@ public class AlipayServiceImpl implements AlipayService {
         request.setNotifyUrl(alipayConfig.getNotifyUrl());
         request.setReturnUrl(alipayConfig.getReturnUrl());
 
-        // 业务参数
-        request.setBizContent(
-                "{\"out_trade_no\":\"" + orderNo + "\","
-                + "\"total_amount\":\"" + amount + "\","
-                + "\"subject\":\"" + subject + "\","
-                + "\"product_code\":\"FAST_INSTANT_TRADE_PAY\""
-                + "}"
-        );
+        // 用 Map + Jackson 序列化，避免字符串拼接破坏 JSON 结构
+        Map<String, String> bizContent = new HashMap<>();
+        bizContent.put("out_trade_no", orderNo);
+        bizContent.put("total_amount", amount);
+        bizContent.put("subject", subject);
+        bizContent.put("product_code", "FAST_INSTANT_TRADE_PAY");
+
+        try {
+            request.setBizContent(objectMapper.writeValueAsString(bizContent));
+        } catch (Exception e) {
+            throw new BusinessException("组装支付参数失败");
+        }
 
         try {
             // 生成支付表单（自动提交的 HTML）
@@ -73,7 +80,14 @@ public class AlipayServiceImpl implements AlipayService {
     @Override
     public String queryTradeStatus(String orderNo) {
         AlipayTradeQueryRequest request = new AlipayTradeQueryRequest();
-        request.setBizContent("{\"out_trade_no\":\"" + orderNo + "\"}");
+        Map<String, String> bizContent = new HashMap<>();
+        bizContent.put("out_trade_no", orderNo);
+        try {
+            request.setBizContent(objectMapper.writeValueAsString(bizContent));
+        } catch (Exception e) {
+            log.error("组装查询参数失败，orderNo={}", orderNo, e);
+            return null;
+        }
 
         try {
             AlipayTradeQueryResponse response = alipayClient.execute(request);

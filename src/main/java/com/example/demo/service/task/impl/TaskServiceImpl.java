@@ -17,7 +17,7 @@ import com.example.demo.mapper.gallery.ArtworkMapper;
 import com.example.demo.mapper.task.AiModelMapper;
 import com.example.demo.mapper.task.TaskMapper;
 import com.example.demo.service.points.PointsService;
-import com.example.demo.service.task.ImageGenerationService;
+import com.example.demo.service.task.AiSessionService;
 import com.example.demo.service.task.LlmService;
 import com.example.demo.service.task.TaskService;
 import lombok.extern.slf4j.Slf4j;
@@ -36,9 +36,8 @@ public class TaskServiceImpl implements TaskService {
 
     private final TaskMapper taskMapper;
     private final ArtworkMapper artworkMapper;
-    private final AiSessionServiceImpl aiSessionService;
+    private final AiSessionService aiSessionService;
     private final LlmService llmService;
-    private final ImageGenerationService imageGenerationService;
     private final StringRedisTemplate redisTemplate;
     private final PointsService pointsService;
     private final AiModelMapper aiModelMapper;
@@ -53,9 +52,8 @@ public class TaskServiceImpl implements TaskService {
 
     public TaskServiceImpl(TaskMapper taskMapper,
                            ArtworkMapper artworkMapper,
-                           AiSessionServiceImpl aiSessionService,
+                           AiSessionService aiSessionService,
                            LlmService llmService,
-                           ImageGenerationService imageGenerationService,
                            StringRedisTemplate redisTemplate,
                            PointsService pointsService,
                            AiModelMapper aiModelMapper,
@@ -64,7 +62,6 @@ public class TaskServiceImpl implements TaskService {
         this.artworkMapper = artworkMapper;
         this.aiSessionService = aiSessionService;
         this.llmService = llmService;
-        this.imageGenerationService = imageGenerationService;
         this.redisTemplate = redisTemplate;
         this.pointsService = pointsService;
         this.aiModelMapper = aiModelMapper;
@@ -76,7 +73,7 @@ public class TaskServiceImpl implements TaskService {
     public TaskVO createTask(Long userId, CreateTaskRequest request) {
         // 0. 接口防刷：10 秒内只能提交一次
         String limitKey = TASK_LIMIT_KEY + userId;
-        if (Boolean.TRUE.equals(redisTemplate.hasKey(limitKey))) {
+        if (Boolean.TRUE.equals(redisTemplate.hasKey(limitKey))) { // NOSONAR - 保留显式 Boolean 判断以防 null
             throw new BusinessException("请求过于频繁，请 10 秒后再试");
         }
 
@@ -224,7 +221,7 @@ public class TaskServiceImpl implements TaskService {
         artwork.setDate(new Date());
         artwork.setCategoryId(request.getCategoryId());
         // isPublic 默认 false（除非用户明确指定）
-        artwork.setIsPublic(request.getIsPublic() != null ? request.getIsPublic() : false);
+        artwork.setIsPublic(Boolean.TRUE.equals(request.getIsPublic()));
 
         // 3. 插入 artwork 表
         artworkMapper.insert(artwork);

@@ -1,5 +1,7 @@
 package com.example.demo.dto.recharge;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 /**
@@ -8,9 +10,9 @@ import lombok.Data;
 @Data
 public class CreateOrderRequest {
 
-    /** 套餐ID */
+    @NotNull(message = "套餐ID不能为空")
     private Long packageId;
 
-    /** 支付方式：alipay（第一版只支持 alipay） */
+    @NotBlank(message = "支付方式不能为空")
     private String payMethod;
 }

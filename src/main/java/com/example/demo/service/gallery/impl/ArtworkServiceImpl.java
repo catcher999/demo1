@@ -13,6 +13,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
+
 @Service
 @Slf4j
 public class ArtworkServiceImpl implements ArtworkService {
@@ -23,6 +25,13 @@ public class ArtworkServiceImpl implements ArtworkService {
 
     /** 点赞关系 Key：like:{userId}:{artworkId} */
     private static final String LIKE_KEY = "like:";
+
+    /** 浏览去重 Key：view:{userId}:{artworkId}，5 分钟内重复访问不计数 */
+    private static final String VIEW_KEY = "view:";
+    private static final Duration VIEW_DEDUP_TTL = Duration.ofMinutes(5);
+
+    /** 点赞 key TTL：30 天后过期，用 DB likes 字段做最终一致性兜底 */
+    private static final Duration LIKE_KEY_TTL = Duration.ofDays(30);
 
     public ArtworkServiceImpl(ArtworkMapper artworkMapper,
                                CategoryMapper categoryMapper,
@@ -57,7 +66,7 @@ public class ArtworkServiceImpl implements ArtworkService {
 
         // 2. Redis 防重复（SETNX：key 不存在才设置成功）
         String likeKey = LIKE_KEY + userId + ":" + artworkId;
-        Boolean success = redisTemplate.opsForValue().setIfAbsent(likeKey, "1");
+        Boolean success = redisTemplate.opsForValue().setIfAbsent(likeKey, "1", LIKE_KEY_TTL);
         if (Boolean.FALSE.equals(success)) {
             throw new BusinessException("您已点赞过该作品");
         }
@@ -97,8 +106,13 @@ public class ArtworkServiceImpl implements ArtworkService {
             throw new BusinessException("作品不存在");
         }
 
-        // 2. 浏览数+1，重算热度
-        artworkMapper.incrementView(artworkId);
+        // 2. 浏览数防刷：同一用户 5 分钟内重复访问只计一次
+        String viewKey = VIEW_KEY + userId + ":" + artworkId;
+        Boolean firstView = redisTemplate.opsForValue()
+                .setIfAbsent(viewKey, "1", VIEW_DEDUP_TTL);
+        if (Boolean.TRUE.equals(firstView)) {
+            artworkMapper.incrementView(artworkId);
+        }
         artwork = artworkMapper.selectById(artworkId); // 重新查询获取最新值
 
         // 3. 查点赞状态

@@ -10,6 +10,7 @@ import com.example.demo.dto.task.TaskVO;
 import com.example.demo.entity.gallery.Artwork;
 import com.example.demo.service.task.AiSessionService;
 import com.example.demo.service.task.TaskService;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -52,7 +53,7 @@ public class TaskController {
     public ResponseEntity<Result<Void>> updatePreference(
             @RequestAttribute("currentUserId") Long userId,
             @PathVariable Long id,
-            @RequestBody UpdatePreferenceRequest req
+            @Valid @RequestBody UpdatePreferenceRequest req
     ) {
         aiSessionService.updatePreference(id, userId, req.getPreference());
         return ResponseEntity.ok(Result.success("Preference updated", null));
@@ -64,7 +65,7 @@ public class TaskController {
     @PostMapping
     public ResponseEntity<Result<TaskVO>> createTask(
             @RequestAttribute("currentUserId") Long userId,
-            @RequestBody CreateTaskRequest req
+            @Valid @RequestBody CreateTaskRequest req
     ) {
         TaskVO data = taskService.createTask(userId, req);
         return ResponseEntity.ok(Result.success("Task created", data));
@@ -95,7 +96,7 @@ public class TaskController {
     public ResponseEntity<Result<Artwork>> publishTask(
             @RequestAttribute("currentUserId") Long userId,
             @PathVariable Long id,
-            @RequestBody PublishTaskRequest req
+            @Valid @RequestBody PublishTaskRequest req
     ) {
         Artwork data = taskService.publishTask(id, userId, req);
         return ResponseEntity.ok(Result.success("Artwork published", data));

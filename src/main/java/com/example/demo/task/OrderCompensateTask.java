@@ -1,6 +1,7 @@
 package com.example.demo.task;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.example.demo.entity.recharge.RechargeOrder;
 import com.example.demo.mapper.recharge.RechargeOrderMapper;
 import com.example.demo.service.recharge.RechargeService;
@@ -25,6 +26,9 @@ public class OrderCompensateTask {
     private final RechargeOrderMapper orderMapper;
     private final RechargeService rechargeService;
 
+    /** 单页扫描数量，避免一次性加载过多订单导致 OOM */
+    private static final int PAGE_SIZE = 200;
+
     public OrderCompensateTask(RechargeOrderMapper orderMapper, RechargeService rechargeService) {
         this.orderMapper = orderMapper;
         this.rechargeService = rechargeService;
@@ -32,37 +36,55 @@ public class OrderCompensateTask {
 
     /**
      * 每 5 分钟执行一次
-     * 扫描 30 分钟前创建、仍为 pending 的订单
+     * 扫描 30 分钟前创建、仍为 pending 的订单，分页处理
      */
     @Scheduled(fixedRate = 5 * 60 * 1000L)
     public void compensate() {
-        // 30 分钟前的时间点
         Date threshold = new Date(System.currentTimeMillis() - 30 * 60 * 1000L);
 
-        LambdaQueryWrapper<RechargeOrder> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(RechargeOrder::getStatus, "pending")
-                .lt(RechargeOrder::getCreatedAt, threshold);
+        int currentPage = 1;
+        int totalCompensated = 0;
+        long totalScanned = 0;
 
-        List<RechargeOrder> pendingOrders = orderMapper.selectList(wrapper);
+        while (true) {
+            Page<RechargeOrder> pageParam = new Page<>(currentPage, PAGE_SIZE);
+            LambdaQueryWrapper<RechargeOrder> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(RechargeOrder::getStatus, "pending")
+                    .lt(RechargeOrder::getCreatedAt, threshold)
+                    .orderByAsc(RechargeOrder::getCreatedAt);
 
-        if (pendingOrders.isEmpty()) {
-            return;
-        }
+            Page<RechargeOrder> pageResult = orderMapper.selectPage(pageParam, wrapper);
+            List<RechargeOrder> pendingOrders = pageResult.getRecords();
 
-        log.info("掉单补偿任务启动，待检查订单数：{}", pendingOrders.size());
-
-        int compensatedCount = 0;
-        for (RechargeOrder order : pendingOrders) {
-            try {
-                boolean success = rechargeService.compensateOrder(order.getOrderNo());
-                if (success) {
-                    compensatedCount++;
-                }
-            } catch (Exception e) {
-                log.error("掉单补偿异常，orderNo={}", order.getOrderNo(), e);
+            if (pendingOrders.isEmpty()) {
+                break;
             }
+
+            totalScanned += pendingOrders.size();
+
+            for (RechargeOrder order : pendingOrders) {
+                try {
+                    boolean success = rechargeService.compensateOrder(order.getOrderNo());
+                    if (success) {
+                        totalCompensated++;
+                    }
+                } catch (Exception e) {
+                    log.error("掉单补偿异常，orderNo={}", order.getOrderNo(), e);
+                }
+            }
+
+            // 最后一页不足 PAGE_SIZE，说明已到末尾
+            if (pendingOrders.size() < PAGE_SIZE) {
+                break;
+            }
+
+            // 关键：补偿成功后订单状态变为 paid，下一页会少一条记录
+            // 因此保持 currentPage 不变继续查（新的 pending 订单会顶上来）
         }
 
-        log.info("掉单补偿任务完成，共补偿 {} 笔订单", compensatedCount);
+        if (totalScanned > 0) {
+            log.info("掉单补偿任务完成，扫描 {} 笔，补偿 {} 笔", totalScanned, totalCompensated);
+        }
     }
 }
+

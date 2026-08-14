@@ -10,9 +10,11 @@ import com.example.demo.service.auth.AuthService;
 import com.example.demo.service.mail.MailService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.util.Collections;
 import java.util.concurrent.ThreadLocalRandom;
 import java.time.Duration;
 
@@ -44,6 +46,21 @@ public class AuthServiceImpl implements AuthService {
     private static final Duration CODE_DAILY_TTL = Duration.ofHours(24);
     private static final int DAILY_LIMIT = 5;
 
+    /**
+     * Lua 脚本：原子性检查每日发送次数 + 自增
+     * 返回 1=允许发送 0=已达上限
+     * key 不存在时初始化为 1 并设置 TTL
+     */
+    private static final String DAILY_COUNT_SCRIPT =
+            "local current = redis.call('get', KEYS[1]) " +
+            "if current == nil then " +
+            "  redis.call('set', KEYS[1], '1', 'EX', ARGV[2]) " +
+            "  return 1 " +
+            "end " +
+            "if tonumber(current) >= tonumber(ARGV[1]) then return 0 end " +
+            "redis.call('incr', KEYS[1]) " +
+            "return 1";
+
     public AuthServiceImpl(UserMapper userMapper,
                            JwtUtil jwtUtil,
                            MailService mailService,
@@ -56,57 +73,54 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public LoginResponse login(String email, String password) {
-        // 1. 按邮箱查询用户
         User user = findByEmail(email);
         if (user == null) {
             throw new BusinessException("用户不存在");
         }
 
-        // 2. 用户尚未设置密码（仅通过验证码自动注册的账号）
         if (user.getPassword() == null || user.getPassword().isEmpty()) {
             throw new BusinessException("请使用邮箱验证码登录，或先设置密码");
         }
 
-        // 3. BCrypt 校验密码
         if (!passwordEncoder.matches(password, user.getPassword())) {
             throw new BusinessException("密码错误");
         }
 
-        // 4. 生成 token（subject 用 email，name 可能为空）
         return buildLoginResponse(user, email);
     }
 
     @Override
     public void sendCode(String email) {
-        // 0. 防刷：60 秒频率限制
+        // 1. 防刷：60 秒频率限制
         String limitKey = CODE_LIMIT_KEY + email;
         if (Boolean.TRUE.equals(redisTemplate.hasKey(limitKey))) {
             throw new BusinessException("请求过于频繁，请 60 秒后再试");
         }
 
-        // 0.1 防刷：每日发送次数限制
+        // 2. 防刷：每日发送次数限制（Lua 原子操作，防并发突破上限）
         String dailyKey = CODE_DAILY_KEY + email;
-        String dailyCount = redisTemplate.opsForValue().get(dailyKey);
-        if (dailyCount != null && Integer.parseInt(dailyCount) >= DAILY_LIMIT) {
+        Long allowed = redisTemplate.execute(
+                new DefaultRedisScript<>(DAILY_COUNT_SCRIPT, Long.class),
+                Collections.singletonList(dailyKey),
+                String.valueOf(DAILY_LIMIT),
+                String.valueOf(CODE_DAILY_TTL.toSeconds())
+        );
+        // Lua 脚本始终返回数值（0 或 1），不会为 null
+        if (allowed != null && allowed == 0L) {
             throw new BusinessException("今日验证码发送次数已达上限（" + DAILY_LIMIT + " 次）");
         }
 
-        // 1. 生成 6 位数字验证码
+        // 3. 生成 6 位数字验证码
         String code = String.format("%06d", ThreadLocalRandom.current().nextInt(1_000_000));
 
-        // 2. 存入 Redis，5 分钟过期
-        redisTemplate.opsForValue().set(CODE_KEY_PREFIX + email, code, CODE_TTL);
-
-        // 3. 发送邮件
+        // 4. 先发邮件（失败则抛异常，不写 Redis，用户可立即重试）
         mailService.sendVerificationCode(email, code);
 
-        // 4. 记录防刷标记
+        // 5. 邮件发送成功后，存验证码到 Redis
+        redisTemplate.opsForValue().set(CODE_KEY_PREFIX + email, code, CODE_TTL);
+
+        // 6. 记录 60 秒防刷标记
         redisTemplate.opsForValue().set(limitKey, "1", CODE_LIMIT_TTL);
-        if (dailyCount == null) {
-            redisTemplate.opsForValue().set(dailyKey, "1", CODE_DAILY_TTL);
-        } else {
-            redisTemplate.opsForValue().increment(dailyKey);
-        }
     }
 
     @Override

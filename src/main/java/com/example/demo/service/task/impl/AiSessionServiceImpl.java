@@ -56,12 +56,14 @@ public class AiSessionServiceImpl implements AiSessionService {
     }
 
     /** 内部方法：更新会话标题（由 TaskService 在首个任务生成后调用） */
-    void updateSessionTitle(AiSession session) {
+    @Override
+    public void updateSessionTitle(AiSession session) {
         aiSessionMapper.updateById(session);
     }
 
     /** 查询会话并校验归属权，不存在或不属于该用户则抛异常 */
-    AiSession getByIdAndUserId(Long sessionId, Long userId) {
+    @Override
+    public AiSession getByIdAndUserId(Long sessionId, Long userId) {
         LambdaQueryWrapper<AiSession> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(AiSession::getId, sessionId)
                 .eq(AiSession::getUserId, userId);
