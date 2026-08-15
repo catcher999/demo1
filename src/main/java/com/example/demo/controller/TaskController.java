@@ -10,6 +10,7 @@ import com.example.demo.dto.task.TaskVO;
 import com.example.demo.entity.gallery.Artwork;
 import com.example.demo.service.task.AiSessionService;
 import com.example.demo.service.task.TaskService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -61,14 +62,37 @@ public class TaskController {
 
     // ==================== 任务相关 ====================
 
-    /** 提交生成请求 */
+    /** 提交生成请求（按 IP 限流：同一 IP 10 秒内只能提交 1 次） */
     @PostMapping
     public ResponseEntity<Result<TaskVO>> createTask(
             @RequestAttribute("currentUserId") Long userId,
+            HttpServletRequest httpRequest,
             @Valid @RequestBody CreateTaskRequest req
     ) {
-        TaskVO data = taskService.createTask(userId, req);
+        String ip = resolveClientIp(httpRequest);
+        TaskVO data = taskService.createTask(userId, ip, req);
         return ResponseEntity.ok(Result.success("Task created", data));
+    }
+
+    /**
+     * 从请求头解析客户端真实 IP（兼容反向代理）。
+     * 优先级：X-Forwarded-For 首段 > X-Real-IP > Proxy-Client-IP > remoteAddr
+     */
+    private String resolveClientIp(HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip != null && !ip.isBlank() && !"unknown".equalsIgnoreCase(ip)) {
+            // 多级代理时取首个（即客户端真实 IP）
+            return ip.split(",")[0].trim();
+        }
+        ip = request.getHeader("X-Real-IP");
+        if (ip != null && !ip.isBlank() && !"unknown".equalsIgnoreCase(ip)) {
+            return ip.trim();
+        }
+        ip = request.getHeader("Proxy-Client-IP");
+        if (ip != null && !ip.isBlank() && !"unknown".equalsIgnoreCase(ip)) {
+            return ip.trim();
+        }
+        return request.getRemoteAddr();
     }
 
     /** 确认描述，开始生成图片 */

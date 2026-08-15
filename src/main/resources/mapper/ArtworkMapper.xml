@@ -38,6 +38,7 @@
     </select>
 
     <!-- 点赞：likes+1，重算 heat_score（MySQL SET 从左到右执行，likes 已更新，直接用） -->
+    <!--suppress SqlNoDataSourceInspection, SqlResolve -->
     <update id="incrementLike">
         UPDATE `artwork`
         SET likes = likes + 1,
@@ -46,6 +47,7 @@
     </update>
 
     <!-- 取消点赞：likes-1（不低于0），重算 heat_score（likes 已更新，直接用） -->
+    <!--suppress SqlNoDataSourceInspection, SqlResolve -->
     <update id="decrementLike">
         UPDATE `artwork`
         SET likes = GREATEST(likes - 1, 0),
@@ -55,6 +57,7 @@
     </update>
 
     <!-- 增加浏览数，重算 heat_score（views 已更新，直接用） -->
+    <!--suppress SqlNoDataSourceInspection, SqlResolve -->
     <update id="incrementView">
         UPDATE `artwork`
         SET views = COALESCE(views, 0) + 1,

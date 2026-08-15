@@ -2,25 +2,34 @@ package com.example.demo.service.points.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.example.demo.entity.admin.PointsLog;
 import com.example.demo.entity.user.User;
+import com.example.demo.mapper.admin.PointsLogMapper;
 import com.example.demo.mapper.user.UserMapper;
 import com.example.demo.service.points.PointsService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 
 @Service
+@Slf4j
 public class PointsServiceImpl implements PointsService {
 
     private final UserMapper userMapper;
+    private final PointsLogMapper pointsLogMapper;
     private final StringRedisTemplate redisTemplate;
 
-    public PointsServiceImpl(UserMapper userMapper, StringRedisTemplate redisTemplate) {
+    public PointsServiceImpl(UserMapper userMapper,
+                             PointsLogMapper pointsLogMapper,
+                             StringRedisTemplate redisTemplate) {
         this.userMapper = userMapper;
+        this.pointsLogMapper = pointsLogMapper;
         this.redisTemplate = redisTemplate;
     }
 
@@ -69,7 +78,7 @@ public class PointsServiceImpl implements PointsService {
     public boolean deductPoints(Long userId, int points) {
         String key = POINTS_KEY + userId;
 
-        if (!Boolean.TRUE.equals(redisTemplate.hasKey(key))) {
+        if (!redisTemplate.hasKey(key)) {
             loadPointsToCache(userId);
         }
 
@@ -93,7 +102,7 @@ public class PointsServiceImpl implements PointsService {
     public void refundPoints(Long userId, int points) {
         String key = POINTS_KEY + userId;
 
-        if (!Boolean.TRUE.equals(redisTemplate.hasKey(key))) {
+        if (!redisTemplate.hasKey(key)) {
             loadPointsToCache(userId);
         }
 
@@ -114,7 +123,7 @@ public class PointsServiceImpl implements PointsService {
         String key = POINTS_KEY + userId;
 
         // 如果缓存已加载，原子加算力；否则直接改 DB，下次读会重新加载
-        if (Boolean.TRUE.equals(redisTemplate.hasKey(key))) {
+        if (redisTemplate.hasKey(key)) {
             redisTemplate.opsForValue().increment(key, points);
         }
 
@@ -122,6 +131,43 @@ public class PointsServiceImpl implements PointsService {
                 new LambdaUpdateWrapper<User>()
                         .eq(User::getId, userId)
                         .setSql("points = points + " + points));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int adminAdjustPoints(Long userId, int delta, Long adminId, String remark) {
+        // 1. 查当前余额（从 DB 读，避免 Redis 缓存与 DB 不一致）
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new com.example.demo.common.BusinessException("用户不存在");
+        }
+        int balanceBefore = user.getPoints() == null ? 0 : user.getPoints();
+        int balanceAfter = balanceBefore + delta;
+
+        // 2. 先写 points_log 流水（在同一事务内，余额失败则流水回滚）
+        PointsLog logEntry = new PointsLog();
+        logEntry.setUserId(userId);
+        logEntry.setDelta(delta);
+        logEntry.setBalanceAfter(balanceAfter);
+        logEntry.setSource("admin_adj");
+        logEntry.setOperatorId(adminId);
+        logEntry.setRemark(remark);
+        pointsLogMapper.insert(logEntry);
+
+        // 3. 再改 user 表余额
+        userMapper.update(null,
+                new LambdaUpdateWrapper<User>()
+                        .eq(User::getId, userId)
+                        .setSql("points = points + " + delta));
+
+        // 4. 同步 Redis 缓存（如果已加载）
+        String key = POINTS_KEY + userId;
+        if (redisTemplate.hasKey(key)) {
+            redisTemplate.opsForValue().increment(key, delta);
+        }
+
+        log.info("管理员 {} 调整用户 {} 算力：delta={}, 余额 {} -> {}", adminId, userId, delta, balanceBefore, balanceAfter);
+        return balanceAfter;
     }
 
     @Override
@@ -152,7 +198,7 @@ public class PointsServiceImpl implements PointsService {
                         .setSql("points = points + " + reward));
 
         String pointsKey = POINTS_KEY + userId;
-        if (Boolean.TRUE.equals(redisTemplate.hasKey(pointsKey))) {
+        if (redisTemplate.hasKey(pointsKey)) {
             redisTemplate.opsForValue().increment(pointsKey, reward);
         }
 

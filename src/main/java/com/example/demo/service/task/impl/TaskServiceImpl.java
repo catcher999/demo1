@@ -46,8 +46,8 @@ public class TaskServiceImpl implements TaskService {
     /** 图片生成模型标识（当前 Mock，后续可换 SD/Pollinations） */
     private static final String IMAGE_MODEL = "mock-image";
 
-    /** 任务提交限流 key：task_limit:{userId}，10 秒内只能提交一次 */
-    private static final String TASK_LIMIT_KEY = "task_limit:";
+    /** 任务提交限流 key：task_limit:ip:{ip}，同一 IP 10 秒内只能提交一次 */
+    private static final String TASK_LIMIT_KEY = "task_limit:ip:";
     private static final Duration TASK_LIMIT_TTL = Duration.ofSeconds(10);
 
     public TaskServiceImpl(TaskMapper taskMapper,
@@ -70,10 +70,10 @@ public class TaskServiceImpl implements TaskService {
 
     // ==================== 提交生成请求 ====================
     @Override
-    public TaskVO createTask(Long userId, CreateTaskRequest request) {
-        // 0. 接口防刷：10 秒内只能提交一次
-        String limitKey = TASK_LIMIT_KEY + userId;
-        if (Boolean.TRUE.equals(redisTemplate.hasKey(limitKey))) { // NOSONAR - 保留显式 Boolean 判断以防 null
+    public TaskVO createTask(Long userId, String ip, CreateTaskRequest request) {
+        // 0. 接口防刷：同一 IP 10 秒内只能提交一次
+        String limitKey = TASK_LIMIT_KEY + ip;
+        if (redisTemplate.hasKey(limitKey)) {
             throw new BusinessException("请求过于频繁，请 10 秒后再试");
         }
 

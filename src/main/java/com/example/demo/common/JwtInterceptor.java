@@ -35,12 +35,14 @@ public class JwtInterceptor implements HandlerInterceptor {
         // 3. 提取用户信息（从已解析的 Claims 取，无需再解析）
         Long userId = (Long) claims.get("userId");
         String username = claims.getSubject();
+        String role = (String) claims.get("role");
 
-        // 4. 存入 Request 上下文
+        // 4. 存入 Request 上下文（role 供 AdminInterceptor 校验权限）
         request.setAttribute("currentUserId", userId);
         request.setAttribute("currentUsername", username);
+        request.setAttribute("currentRole", role);
 
-        log.debug("Token 验证通过，用户ID: {}, 用户名: {}", userId, username);
+        log.debug("Token 验证通过，用户ID: {}, 用户名: {}, 角色: {}", userId, username, role);
         return true;
     }
 }

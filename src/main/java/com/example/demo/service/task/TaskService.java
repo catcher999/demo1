@@ -10,14 +10,16 @@ public interface TaskService {
 
     /**
      * 提交生成请求：
-     * 1. 校验同 session 下无 waiting_confirm 任务（并发控制）
-     * 2. 调 DeepSeek 生成结构化描述
-     * 3. 回填会话标题（若为空）
+     * 1. 按 IP 限流（同一 IP 10 秒内只能提交 1 次）
+     * 2. 校验同 session 下无 waiting_confirm 任务（并发控制）
+     * 3. 调 DeepSeek 生成结构化描述
+     * 4. 回填会话标题（若为空）
      * @param userId  当前用户 ID
+     * @param ip      客户端 IP（用于防刷限流）
      * @param request {sessionId, prompt}
      * @return 任务 VO（含 description，状态 waiting_confirm）
      */
-    TaskVO createTask(Long userId, CreateTaskRequest request);
+    TaskVO createTask(Long userId, String ip, CreateTaskRequest request);
 
     /**
      * 确认描述，开始生成图片
